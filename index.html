@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ritemap - 仪式地图</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js CDN (用于 3D 地球渲染) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Serif SC', serif;
+            background-color: #120e0b;
+            color: #e6d5b8;
+            overflow: hidden;
+        }
+        .font-calligraphy {
+            font-family: 'Ma Shan Zheng', cursive;
+        }
+        /* 3D 圣杯翻转动画 */
+        .bwa-container {
+            perspective: 1000px;
+        }
+        .bwa-piece {
+            transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform-style: preserve-3d;
+        }
+        .flipping {
+            animation: toss 0.8s ease-out;
+        }
+        @keyframes toss {
+            0% { transform: translateY(0) rotateX(0deg) rotateY(0deg); }
+            50% { transform: translateY(-120px) rotateX(720deg) rotateY(360deg); }
+            100% { transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="h-screen w-screen relative select-none">
+
+    <!-- 1. 首页：3D 复古地球与地图视图 -->
+    <div id="map-view" class="absolute inset-0 w-full h-full flex flex-col justify-between z-10">
+        <!-- 3D 容器 -->
+        <div id="canvas-container" class="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+        <!-- 顶部 Title Overlay -->
+        <div class="relative z-20 top-6 text-center pointer-events-none px-4">
+            <h1 class="text-4xl md:text-5xl font-calligraphy text-amber-200 tracking-wider drop-shadow-[0_2px_10px_rgba(217,119,6,0.5)]">Ritemap 仪式地图</h1>
+            <p class="text-xs md:text-sm text-amber-400/70 mt-1 tracking-widest">拖动地球探索世界各地的玄学仪式</p>
+        </div>
+
+        <!-- 福建·掷圣杯 复古浮动卡片（由 JS 动态计算定位） -->
+        <div id="fujian-card" class="absolute z-20 transition-opacity duration-300 opacity-0 pointer-events-auto" style="transform: translate(-50%, -100%);">
+            <div class="bg-amber-950/90 border-2 border-amber-600/80 rounded-lg p-3 shadow-[0_0_20px_rgba(217,119,6,0.4)] backdrop-blur-sm min-w-[160px] text-center cursor-pointer hover:scale-105 transition-transform" onclick="switchView('game')">
+                <div class="text-xs text-amber-400/80 tracking-widest border-b border-amber-800/60 pb-1 mb-1">中国 · 福建</div>
+                <div class="text-lg font-bold text-amber-100 font-calligraphy">掷圣杯 (Bwa Bwei)</div>
+                <div class="mt-2 text-[11px] bg-amber-800/60 hover:bg-amber-700 text-amber-200 py-1 px-2 rounded-full border border-amber-500/40">点击进入仪式 ➔</div>
+            </div>
+        </div>
+
+        <!-- 底部固定导航栏 -->
+        <div class="relative z-20 pb-6 px-6 flex justify-between items-center bg-gradient-to-t from-black/90 via-black/50 to-transparent pt-12">
+            <div class="flex items-center space-x-2">
+                <span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+                <span class="text-xs text-amber-300/80 tracking-wider">当前探索：东亚地区</span>
+            </div>
+            <button onclick="switchView('game')" class="bg-gradient-to-r from-amber-700 to-amber-900 hover:from-amber-600 hover:to-amber-800 text-amber-100 px-5 py-2.5 rounded-full border border-amber-500/50 shadow-lg text-sm font-bold tracking-wider flex items-center space-x-2 transition-all active:scale-95">
+                <span>☯ 快捷进入：掷圣杯</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 2. 掷圣杯小游戏界面 -->
+    <div id="game-view" class="absolute inset-0 w-full h-full bg-[#1a1410] hidden flex-col justify-between z-30 p-6 overflow-hidden">
+        <!-- 背景复古纹理 overlay -->
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(217,119,6,0.15)_0%,transparent_70%)] pointer-events-none"></div>
+
+        <!-- 顶部导航 -->
+        <div class="relative z-10 flex justify-between items-center">
+            <button onclick="switchView('map')" class="flex items-center space-x-1 text-amber-400/80 hover:text-amber-200 bg-amber-950/40 px-3 py-1.5 rounded-lg border border-amber-800/40 text-sm">
+                <span>❮ 返回地图</span>
+            </button>
+            <h2 class="text-2xl font-calligraphy text-amber-200">福建 · 掷圣杯</h2>
+            <div class="w-16"></div> <!-- 占位保持居中 -->
+        </div>
+
+        <!-- 游戏核心区域 -->
+        <div class="relative z-10 flex-1 flex flex-col items-center justify-center">
+            <!-- 结果文案展示区 -->
+            <div id="result-text" class="text-center mb-10 h-20 flex flex-col items-center justify-center">
+                <div class="text-xl md:text-2xl font-bold text-amber-200 tracking-wider font-calligraphy">诚心祈求，抛掷圣杯</div>
+                <div class="text-xs text-amber-500/70 mt-2">默念心中所求，点击按钮或摇晃手机</div>
+            </div>
+
+            <!-- 圣杯 SVG 展示区 -->
+            <div class="bwa-container flex space-x-8 md:space-x-12 mb-12">
+                <!-- 左杯 -->
+                <div id="bwa-left" class="bwa-piece w-28 h-28 md:w-36 md:h-36 filter drop-shadow-[0_10px_15px_rgba(0,0,0,0.8)]">
+                    <svg viewBox="0 0 100 100" class="w-full h-full">
+                        <!-- 凸面/平面由 JS 切换 transform -->
+                        <g id="left-cup-group">
+                            <!-- 平面 (Flat) -->
+                            <path class="cup-flat hidden" d="M 20 20 C 60 10, 80 40, 80 80 C 40 80, 10 60, 20 20 Z" fill="#b91c1c" stroke="#450a0a" stroke-width="3"/>
+                            <!-- 凸面 (Convex) -->
+                            <path class="cup-convex" d="M 20 20 C 60 10, 80 40, 80 80 C 40 80, 10 60, 20 20 Z" fill="#7f1d1d" stroke="#450a0a" stroke-width="3"/>
+                            <path class="cup-convex" d="M 25 25 C 55 20, 70 45, 70 70" fill="none" stroke="#ef4444" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+                        </g>
+                    </svg>
+                </div>
+                <!-- 右杯 -->
+                <div id="bwa-right" class="bwa-piece w-28 h-28 md:w-36 md:h-36 filter drop-shadow-[0_10px_15px_rgba(0,0,0,0.8)]">
+                    <svg viewBox="0 0 100 100" class="w-full h-full" style="transform: scaleX(-1);">
+                        <g id="right-cup-group">
+                            <path class="cup-flat hidden" d="M 20 20 C 60 10, 80 40, 80 80 C 40 80, 10 60, 20 20 Z" fill="#b91c1c" stroke="#450a0a" stroke-width="3"/>
+                            <path class="cup-convex" d="M 20 20 C 60 10, 80 40, 80 80 C 40 80, 10 60, 20 20 Z" fill="#7f1d1d" stroke="#450a0a" stroke-width="3"/>
+                            <path class="cup-convex" d="M 25 25 C 55 20, 70 45, 70 70" fill="none" stroke="#ef4444" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+                        </g>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- 控制按钮与授权 -->
+            <div class="flex flex-col items-center space-y-4">
+                <button id="toss-btn" onclick="tossBwa()" class="bg-gradient-to-r from-red-700 to-amber-700 hover:from-red-600 hover:to-amber-600 text-amber-100 text-lg font-bold px-10 py-3.5 rounded-full border-2 border-amber-400/50 shadow-[0_0_25px_rgba(185,28,28,0.5)] active:scale-95 transition-all">
+                    抛掷圣杯
+                </button>
+                <button id="ios-permission-btn" onclick="requestIOSMotion()" class="hidden text-xs text-amber-400/60 underline">
+                    开启手机摇一摇感应
+                </button>
+            </div>
+        </div>
+
+        <div class="relative z-10 text-center text-xs text-amber-500/40 pb-2">
+            Ritemap 玄学实验室 · 诚心则灵
+        </div>
+    </div>
+
+    <!-- 逻辑控制脚本 -->
+    <script>
+        // ------------------ Web Audio API 木杯碰撞音效 ------------------
+        let audioCtx = null;
+
+        function getAudioContext() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
+
+        // 模拟木杯相互碰撞与落地的沉闷敲击声 (Wood Block Sound)
+        function playWoodClackSound() {
+            try {
+                const ctx = getAudioContext();
+                const now = ctx.currentTime;
+
+                // 产生两次快速敲击，模拟抛起碰撞与落地
+                [0, 0.12, 0.75].forEach((delay, index) => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+
+                    // 木质共鸣音调 (基频 220Hz - 440Hz 之间)
+                    const baseFreq = index === 2 ? 180 : 260 + Math.random() * 80;
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(baseFreq, now + delay);
+                    // 快速降调模拟木头撞击的瞬间顿感
+                    osc.frequency.exponentialRampToValueAtTime(80, now + delay + 0.08);
+
+                    // 快速衰减包络
+                    gain.gain.setValueAtTime(0.8, now + delay);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.08);
+
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+
+                    osc.start(now + delay);
+                    osc.stop(now + delay + 0.09);
+                });
+            } catch (e) {
+                console.log('Audio playback error:', e);
+            }
+        }
+
+        // ------------------ 1. 视图切换 ------------------
+        function switchView(view) {
+            const mapView = document.getElementById('map-view');
+            const gameView = document.getElementById('game-view');
+            getAudioContext(); // 用户交互激活 AudioContext
+            if (view === 'game') {
+                mapView.classList.add('hidden');
+                gameView.classList.remove('hidden');
+                gameView.classList.add('flex');
+                checkIOSPermissionNeeded();
+            } else {
+                gameView.classList.add('hidden');
+                gameView.classList.remove('flex');
+                mapView.classList.remove('hidden');
+            }
+        }
+
+        // ------------------ 2. Three.js 复古 3D 地球与航线 ------------------
+        let scene, camera, renderer, globe, curveMesh, markerMesh;
+        const fujianLat = 26.07, fujianLng = 119.30; // 福建经纬度
+
+        function init3DGlobe() {
+            const container = document.getElementById('canvas-container');
+            
+            // 场景与相机
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.z = 250;
+
+            // 渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            // 灯光
+            const ambientLight = new THREE.AmbientLight(0xffeedd, 1.2);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffd700, 0.8);
+            dirLight.position.set(5, 3, 5);
+            scene.add(dirLight);
+
+            // 1. 创建复古材质地球
+            const radius = 70;
+            const geometry = new THREE.SphereGeometry(radius, 64, 64);
+            
+            // 使用 Canvas 动态绘制复古风格地球纹理（无需加载外部图片）
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#2a1f18'; ctx.fillRect(0, 0, 1024, 512); // 海洋色
+            ctx.fillStyle = '#5c4028'; // 陆地色
+            // 绘制简易陆地轮廓图
+            ctx.beginPath();
+            ctx.arc(700, 200, 180, 0, Math.PI * 2); // 亚欧大陆示意
+            ctx.arc(300, 220, 120, 0, Math.PI * 2); // 美洲示意
+            ctx.arc(650, 340, 100, 0, Math.PI * 2); // 非洲示意
+            ctx.fill();
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.MeshPhongMaterial({
+                map: texture,
+                shininess: 5,
+                color: 0xdfc49f
+            });
+            globe = new THREE.Mesh(geometry, material);
+            scene.add(globe);
+
+            // 2. 福建位置的 3D 红色闪烁标点
+            const pos = latLngToVector3(fujianLat, fujianLng, radius);
+            const markerGeo = new THREE.SphereGeometry(2, 16, 16);
+            const markerMat = new THREE.MeshBasicMaterial({ color: 0xff3333 });
+            markerMesh = new THREE.Mesh(markerGeo, markerMat);
+            markerMesh.position.copy(pos);
+            globe.add(markerMesh);
+
+            // 3. 3D 弧线引线 (像飞机航线一样突出)
+            const targetPos = latLngToVector3(fujianLat + 15, fujianLng + 20, radius + 25);
+            const midPos = pos.clone().add(targetPos).multiplyScalar(0.5).normalize().multiplyScalar(radius + 40);
+            
+            const curve = new THREE.QuadraticBezierCurve3(pos, midPos, targetPos);
+            const points = curve.getPoints(50);
+            const curveGeo = new THREE.BufferGeometry().setFromPoints(points);
+            const curveMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 2 });
+            curveMesh = new THREE.Line(curveGeo, curveMat);
+            globe.add(curveMesh);
+
+            // 将地球旋转至聚焦东亚/福建
+            globe.rotation.y = -Math.PI / 2.2;
+            globe.rotation.x = 0.3;
+
+            // 交互：拖拽旋转
+            let isDragging = false, previousMousePosition = { x: 0, y: 0 };
+            container.addEventListener('mousedown', () => isDragging = true);
+            container.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    const deltaMove = { x: e.offsetX - previousMousePosition.x, y: e.offsetY - previousMousePosition.y };
+                    globe.rotation.y += deltaMove.x * 0.005;
+                    globe.rotation.x += deltaMove.y * 0.005;
+                }
+                previousMousePosition = { x: e.offsetX, y: e.offsetY };
+            });
+            window.addEventListener('mouseup', () => isDragging = false);
+            
+            // 移动端触摸
+            container.addEventListener('touchstart', (e) => {
+                isDragging = true;
+                previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            });
+            container.addEventListener('touchmove', (e) => {
+                if (isDragging) {
+                    const deltaMove = { x: e.touches[0].clientX - previousMousePosition.x, y: e.touches[0].clientY - previousMousePosition.y };
+                    globe.rotation.y += deltaMove.x * 0.005;
+                    globe.rotation.x += deltaMove.y * 0.005;
+                    previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+            });
+            container.addEventListener('touchend', () => isDragging = false);
+
+            animate();
+        }
+
+        // 经纬度转 3D 坐标
+        function latLngToVector3(lat, lng, radius) {
+            const phi = (90 - lat) * (Math.PI / 180);
+            const theta = (lng + 180) * (Math.PI / 180);
+            const x = -(radius * Math.sin(phi) * Math.cos(theta));
+            const z = (radius * Math.sin(phi) * Math.sin(theta));
+            const y = (radius * Math.cos(phi));
+            return new THREE.Vector3(x, y, z);
+        }
+
+        // 帧渲染与卡片 2D 定位更新
+        function animate() {
+            requestAnimationFrame(animate);
+            // 地球自转缓动
+            globe.rotation.y += 0.001;
+
+            // 将 3D 标点位置映射为屏幕 2D 坐标以定位卡片
+            if (markerMesh && camera) {
+                const wp = new THREE.Vector3();
+                markerMesh.getWorldPosition(wp);
+                wp.project(camera);
+                const x = (wp.x * .5 + .5) * window.innerWidth;
+                const y = (-(wp.y * .5) + .5) * window.innerHeight;
+                
+                const card = document.getElementById('fujian-card');
+                // 判断标点是否在地球正面
+                if (wp.z < 1) {
+                    card.style.left = `${x}px`;
+                    card.style.top = `${y - 20}px`;
+                    card.style.opacity = '1';
+                } else {
+                    card.style.opacity = '0';
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // ------------------ 3. 掷圣杯逻辑 ------------------
+        let isTossing = false;
+
+        function tossBwa() {
+            if (isTossing) return;
+            isTossing = true;
+
+            // 播放木质敲击音效
+            playWoodClackSound();
+
+            const leftBwa = document.getElementById('bwa-left');
+            const rightBwa = document.getElementById('bwa-right');
+            const resultText = document.getElementById('result-text');
+
+            // 触发动画
+            leftBwa.classList.add('flipping');
+            rightBwa.classList.add('flipping');
+            resultText.innerHTML = `<div class="text-lg font-bold text-amber-400 animate-pulse font-calligraphy">圣杯翻飞中...</div>`;
+
+            // 随机结果：0 = 平面 (Flat), 1 = 凸面 (Convex)
+            const leftResult = Math.floor(Math.random() * 2);
+            const rightResult = Math.floor(Math.random() * 2);
+
+            setTimeout(() => {
+                leftBwa.classList.remove('flipping');
+                rightBwa.classList.remove('flipping');
+
+                // 更新杯面样式
+                setCupState('left-cup-group', leftResult);
+                setCupState('right-cup-group', rightResult);
+
+                // 判断圣杯结果
+                if (leftResult !== rightResult) {
+                    // 1平1凸
+                    resultText.innerHTML = `
+                        <div class="text-2xl font-bold text-red-500 font-calligraphy">【 圣 杯 】</div>
+                        <div class="text-sm text-amber-300 mt-1">神明应允 · 大吉大利</div>
+                    `;
+                } else if (leftResult === 0 && rightResult === 0) {
+                    // 2平
+                    resultText.innerHTML = `
+                        <div class="text-2xl font-bold text-amber-400 font-calligraphy">【 笑 杯 】</div>
+                        <div class="text-sm text-amber-300/80 mt-1">神明微笑 · 状况不明，请诚心重祈</div>
+                    `;
+                } else {
+                    // 2凸
+                    resultText.innerHTML = `
+                        <div class="text-2xl font-bold text-stone-400 font-calligraphy">【 怒杯 / 阴杯 】</div>
+                        <div class="text-sm text-amber-300/80 mt-1">神明不许 · 宜静思自省</div>
+                    `;
+                }
+
+                // 震动反馈
+                if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                isTossing = false;
+            }, 800);
+        }
+
+        function setCupState(groupId, state) {
+            const group = document.getElementById(groupId);
+            const flats = group.getElementsByClassName('cup-flat');
+            const convexes = group.getElementsByClassName('cup-convex');
+
+            if (state === 0) { // 平面
+                Array.from(flats).forEach(el => el.classList.remove('hidden'));
+                Array.from(convexes).forEach(el => el.classList.add('hidden'));
+            } else { // 凸面
+                Array.from(flats).forEach(el => el.classList.add('hidden'));
+                Array.from(convexes).forEach(el => el.classList.remove('hidden'));
+            }
+        }
+
+        // ------------------ 4. 移动端摇一摇监听 ------------------
+        let lastX = 0, lastY = 0, lastZ = 0;
+
+        function handleMotion(event) {
+            const current = event.accelerationIncludingGravity;
+            if (!current) return;
+            const delta = Math.abs(current.x - lastX) + Math.abs(current.y - lastY) + Math.abs(current.z - lastZ);
+            if (delta > 25) { // 摇晃感应阈值
+                tossBwa();
+            }
+            lastX = current.x; lastY = current.y; lastZ = current.z;
+        }
+
+        function checkIOSPermissionNeeded() {
+            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                document.getElementById('ios-permission-btn').classList.remove('hidden');
+            } else if (window.DeviceMotionEvent) {
+                window.addEventListener('devicemotion', handleMotion);
+            }
+        }
+
+        function requestIOSMotion() {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                DeviceMotionEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            window.addEventListener('devicemotion', handleMotion);
+                            document.getElementById('ios-permission-btn').classList.add('hidden');
+                            alert("摇一摇感应开启成功！");
+                        }
+                    })
+                    .catch(console.error);
+            }
+        }
+
+        // 页面初始化
+        window.addEventListener('DOMContentLoaded', () => {
+            init3DGlobe();
+        });
+
+        // 窗口尺寸自适应
+        window.addEventListener('resize', () => {
+            const container = document.getElementById('canvas-container');
+            if (camera && renderer && container) {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            }
+        });
+    </script>
+</body>
+</html>
