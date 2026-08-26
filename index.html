@@ -13,7 +13,7 @@
         
         body {
             font-family: 'Noto Serif SC', serif;
-            background-color: #0d0b09;
+            background-color: #0c0a09;
             color: #e6d5b8;
             overflow: hidden;
         }
@@ -40,7 +40,7 @@
 </head>
 <body class="h-screen w-screen relative select-none">
 
-    <!-- 1. 首页：3D 复古地球与地图视图 -->
+    <!-- 1. 首页：3D 复古地球视图 -->
     <div id="map-view" class="absolute inset-0 w-full h-full flex flex-col justify-between z-10">
         <!-- 3D Canvas 容器 -->
         <div id="canvas-container" class="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"></div>
@@ -50,7 +50,7 @@
             <path id="leader-line" d="" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 2" opacity="0.8"/>
         </svg>
 
-        <!-- 顶部 Title Overlay（已移除副标题） -->
+        <!-- 顶部 Title -->
         <div class="relative z-20 top-8 text-center pointer-events-none px-4">
             <h1 class="text-4xl md:text-5xl font-calligraphy text-amber-200 tracking-wider drop-shadow-[0_2px_10px_rgba(217,119,6,0.5)]">Ritemap 仪式地图</h1>
         </div>
@@ -189,9 +189,84 @@
             }
         }
 
-        // ------------------ 2. Three.js 羊皮纸复古 3D 地球 ------------------
+        // ------------------ 2. 生成本地纯 Canvas 羊皮纸地图 ------------------
+        function createVintageParchmentTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 2048;
+            canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+
+            // 1. 底色：羊皮纸黄棕色渐变
+            const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            grad.addColorStop(0, '#c8ab83');
+            grad.addColorStop(0.5, '#dfc49e');
+            grad.addColorStop(1, '#b5976e');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 2. 羊皮纸复古做旧纹理噪点
+            for (let i = 0; i < 40000; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? 'rgba(70,40,10,0.03)' : 'rgba(255,240,200,0.05)';
+                ctx.fillRect(Math.random() * canvas.width, Math.random() * canvas.height, Math.random() * 3 + 1, Math.random() * 3 + 1);
+            }
+
+            // 3. 绘制复古经纬网格线
+            ctx.strokeStyle = 'rgba(120, 80, 40, 0.25)';
+            ctx.lineWidth = 1.5;
+            for (let x = 0; x <= canvas.width; x += 128) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= canvas.height; y += 128) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+
+            // 赤道与本初子午线加深
+            ctx.strokeStyle = 'rgba(160, 60, 30, 0.4)';
+            ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(0, canvas.height / 2); ctx.lineTo(canvas.width, canvas.height / 2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(canvas.width / 2, 0); ctx.lineTo(canvas.width / 2, canvas.height); ctx.stroke();
+
+            // 4. 绘制简易但精细的世界大洲陆地轮廓（复古绿棕色）
+            ctx.fillStyle = '#8a7352';
+            ctx.strokeStyle = '#5a462c';
+            ctx.lineWidth = 2;
+
+            function drawLand(coords) {
+                ctx.beginPath();
+                coords.forEach(([lon, lat], idx) => {
+                    const x = ((lon + 180) / 360) * canvas.width;
+                    const y = ((90 - lat) / 180) * canvas.height;
+                    if (idx === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            // 亚欧大陆
+            drawLand([[20, 70], [40, 70], [80, 75], [170, 65], [140, 35], [100, 10], [80, 8], [60, 25], [40, 30], [25, 38], [10, 55]]);
+            // 非洲
+            drawLand([[-15, 35], [35, 30], [50, 10], [40, -35], [15, -35], [0, 5]]);
+            // 北美洲
+            drawLand([[-160, 65], [-100, 75], [-60, 60], [-80, 25], [-105, 20], [-125, 48]]);
+            // 南美洲
+            drawLand([[-80, 10], [-35, -5], [-40, -20], [-70, -55], [-80, -15]]);
+            // 澳大利亚
+            drawLand([[115, -15], [150, -15], [150, -38], [115, -35]]);
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // ------------------ 3. Three.js 渲染主逻辑 ------------------
         let scene, camera, renderer, globe, markerMesh;
-        const fujianLat = 26.07, fujianLng = 119.30; // 福建坐标
+        const fujianLat = 26.07, fujianLng = 119.30;
 
         function init3DGlobe() {
             const container = document.getElementById('canvas-container');
@@ -205,48 +280,41 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             container.appendChild(renderer.domElement);
 
-            // 复古古董光照：软暖白主光 + 深黄琥珀环境光
-            const ambientLight = new THREE.AmbientLight(0xffebd2, 1.2);
+            // 环境日光与暖黄色侧光
+            const ambientLight = new THREE.AmbientLight(0xfff5ea, 1.4);
             scene.add(ambientLight);
-            const dirLight = new THREE.DirectionalLight(0xffb86c, 0.8);
+            const dirLight = new THREE.DirectionalLight(0xffb86c, 0.7);
             dirLight.position.set(5, 3, 5);
             scene.add(dirLight);
 
-            // 1. 球体几何体
+            // 球体
             const radius = 70;
             const geometry = new THREE.SphereGeometry(radius, 64, 64);
             
-            // 2. 加载完全无缝的羊皮纸风格古董地图贴图
-            const textureLoader = new THREE.TextureLoader();
-            // 采用高品质羊皮纸复古地图，自带国家板块与暖黄旧纸质感
-            const vintageTexture = textureLoader.load('https://raw.githubusercontent.com/turban/webgl-earth/master/images/vintage.jpg', () => {
-                renderer.render(scene, camera);
-            });
-            vintageTexture.wrapS = THREE.ClampToEdgeWrapping;
-            vintageTexture.wrapT = THREE.ClampToEdgeWrapping;
+            // 使用纯本地绘制的无缝羊皮纸贴图
+            const vintageTexture = createVintageParchmentTexture();
 
             const material = new THREE.MeshStandardMaterial({
                 map: vintageTexture,
-                roughness: 0.8,
-                metalness: 0.1,
-                color: 0xf0e2ca // 叠加羊皮纸质感色调
+                roughness: 0.7,
+                metalness: 0.1
             });
             globe = new THREE.Mesh(geometry, material);
             scene.add(globe);
 
-            // 3. 福建位置的 3D 红色标注点
+            // 福建标注点
             const pos = latLngToVector3(fujianLat, fujianLng, radius);
-            const markerGeo = new THREE.SphereGeometry(2.2, 16, 16);
+            const markerGeo = new THREE.SphereGeometry(2.4, 16, 16);
             const markerMat = new THREE.MeshBasicMaterial({ color: 0xd97706 });
             markerMesh = new THREE.Mesh(markerGeo, markerMat);
             markerMesh.position.copy(pos);
             globe.add(markerMesh);
 
-            // 初始视角定位至东亚/中国区域
+            // 视角初始化（面向中国地区）
             globe.rotation.y = -Math.PI / 1.7;
             globe.rotation.x = 0.35;
 
-            // 拖拽旋转逻辑
+            // 拖拽手势交互
             let isDragging = false, previousMousePosition = { x: 0, y: 0 };
             container.addEventListener('mousedown', () => isDragging = true);
             container.addEventListener('mousemove', (e) => {
@@ -268,7 +336,7 @@
                     const deltaMove = { x: e.touches[0].clientX - previousMousePosition.x, y: e.touches[0].clientY - previousMousePosition.y };
                     globe.rotation.y += deltaMove.x * 0.005;
                     globe.rotation.x += deltaMove.y * 0.005;
-                    previousMousePosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                    previousMousePosition = { x: e.touches[0].clientX - previousMousePosition.x, y: e.touches[0].clientY - previousMousePosition.y };
                 }
             });
             container.addEventListener('touchend', () => isDragging = false);
@@ -285,16 +353,14 @@
             return new THREE.Vector3(x, y, z);
         }
 
-        // 实时跟踪卡片与标点的位置，保持连线完整绑定
         function animate() {
             requestAnimationFrame(animate);
-            globe.rotation.y += 0.0006; // 缓慢自转
+            globe.rotation.y += 0.0006;
 
             if (markerMesh && camera) {
                 const wp = new THREE.Vector3();
                 markerMesh.getWorldPosition(wp);
                 
-                // 判断标点是否朝向视野正面
                 const cameraDir = new THREE.Vector3();
                 camera.getWorldDirection(cameraDir);
                 const dot = wp.clone().normalize().dot(cameraDir.negate());
@@ -306,7 +372,7 @@
                 const card = document.getElementById('fujian-card');
                 const line = document.getElementById('leader-line');
 
-                if (dot > 0.25) { // 正面时显示卡片和连线
+                if (dot > 0.25) {
                     const offsetX = 80;
                     const offsetY = -80;
                     const cardX = startX + offsetX;
@@ -316,7 +382,6 @@
                     card.style.top = `${cardY}px`;
                     card.style.opacity = '1';
 
-                    // 绘制平滑贝塞尔曲线，完美连接标点与信息框
                     const endX = cardX;
                     const endY = cardY + 35;
                     const controlX = startX + 40;
@@ -333,7 +398,7 @@
             renderer.render(scene, camera);
         }
 
-        // ------------------ 3. 掷圣杯逻辑 ------------------
+        // ------------------ 4. 掷圣杯逻辑 ------------------
         let isTossing = false;
         function tossBwa() {
             if (isTossing) return;
@@ -392,7 +457,7 @@
             }
         }
 
-        // ------------------ 4. 移动端摇一摇 ------------------
+        // ------------------ 5. 移动端摇一摇 ------------------
         let lastX = 0, lastY = 0, lastZ = 0;
         function handleMotion(event) {
             const current = event.accelerationIncludingGravity;
