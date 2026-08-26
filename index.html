@@ -6,14 +6,14 @@
     <title>Ritemap - 仪式地图</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Three.js CDN (用于 3D 地球渲染) -->
+    <!-- Three.js CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;700&display=swap');
         
         body {
             font-family: 'Noto Serif SC', serif;
-            background-color: #120e0b;
+            background-color: #0d0b09;
             color: #e6d5b8;
             overflow: hidden;
         }
@@ -50,13 +50,12 @@
             <path id="leader-line" d="" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 2" opacity="0.8"/>
         </svg>
 
-        <!-- 顶部 Title Overlay -->
-        <div class="relative z-20 top-6 text-center pointer-events-none px-4">
+        <!-- 顶部 Title Overlay（已移除副标题） -->
+        <div class="relative z-20 top-8 text-center pointer-events-none px-4">
             <h1 class="text-4xl md:text-5xl font-calligraphy text-amber-200 tracking-wider drop-shadow-[0_2px_10px_rgba(217,119,6,0.5)]">Ritemap 仪式地图</h1>
-            <p class="text-xs md:text-sm text-amber-400/70 mt-1 tracking-widest">拖动地球探索世界各地的玄学仪式</p>
         </div>
 
-        <!-- 福建·掷圣杯 复古浮动卡片（由 JS 动态计算位置） -->
+        <!-- 福建·掷圣杯 浮动卡片 -->
         <div id="fujian-card" class="absolute z-20 transition-opacity duration-200 opacity-0 pointer-events-auto" style="transform: translate(0, 0);">
             <div class="bg-amber-950/90 border-2 border-amber-600/80 rounded-lg p-3 shadow-[0_0_20px_rgba(217,119,6,0.4)] backdrop-blur-sm min-w-[160px] text-center cursor-pointer hover:scale-105 transition-transform" onclick="switchView('game')">
                 <div class="text-xs text-amber-400/80 tracking-widest border-b border-amber-800/60 pb-1 mb-1">中国 · 福建</div>
@@ -190,7 +189,7 @@
             }
         }
 
-        // ------------------ 2. Three.js 复古 3D 地球与实时引线计算 ------------------
+        // ------------------ 2. Three.js 羊皮纸复古 3D 地球 ------------------
         let scene, camera, renderer, globe, markerMesh;
         const fujianLat = 26.07, fujianLng = 119.30; // 福建坐标
 
@@ -206,42 +205,46 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             container.appendChild(renderer.domElement);
 
-            // 基础环境光与方向光源
-            const ambientLight = new THREE.AmbientLight(0xfff5ea, 1.4);
+            // 复古古董光照：软暖白主光 + 深黄琥珀环境光
+            const ambientLight = new THREE.AmbientLight(0xffebd2, 1.2);
             scene.add(ambientLight);
-            const dirLight = new THREE.DirectionalLight(0xffd700, 0.6);
+            const dirLight = new THREE.DirectionalLight(0xffb86c, 0.8);
             dirLight.position.set(5, 3, 5);
             scene.add(dirLight);
 
-            // 1. 创建搭载复古世界地图贴图的地球
+            // 1. 球体几何体
             const radius = 70;
             const geometry = new THREE.SphereGeometry(radius, 64, 64);
             
-            // 采用标准复古世界地图 (Equirectangular 贴图)
+            // 2. 加载完全无缝的羊皮纸风格古董地图贴图
             const textureLoader = new THREE.TextureLoader();
-            const vintageTexture = textureLoader.load('https://upload.wikimedia.org/wikipedia/commons/8/83/Equirectangular_projection_SW.jpg', () => {
+            // 采用高品质羊皮纸复古地图，自带国家板块与暖黄旧纸质感
+            const vintageTexture = textureLoader.load('https://raw.githubusercontent.com/turban/webgl-earth/master/images/vintage.jpg', () => {
                 renderer.render(scene, camera);
             });
+            vintageTexture.wrapS = THREE.ClampToEdgeWrapping;
+            vintageTexture.wrapT = THREE.ClampToEdgeWrapping;
 
-            const material = new THREE.MeshPhongMaterial({
+            const material = new THREE.MeshStandardMaterial({
                 map: vintageTexture,
-                shininess: 10,
-                color: 0xdfc49f // 给全图覆上一层复古暖棕调
+                roughness: 0.8,
+                metalness: 0.1,
+                color: 0xf0e2ca // 叠加羊皮纸质感色调
             });
             globe = new THREE.Mesh(geometry, material);
             scene.add(globe);
 
-            // 2. 福建位置的 3D 红色闪烁标点
+            // 3. 福建位置的 3D 红色标注点
             const pos = latLngToVector3(fujianLat, fujianLng, radius);
-            const markerGeo = new THREE.SphereGeometry(2.5, 16, 16);
-            const markerMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+            const markerGeo = new THREE.SphereGeometry(2.2, 16, 16);
+            const markerMat = new THREE.MeshBasicMaterial({ color: 0xd97706 });
             markerMesh = new THREE.Mesh(markerGeo, markerMat);
             markerMesh.position.copy(pos);
             globe.add(markerMesh);
 
-            // 地球初始视角
-            globe.rotation.y = -Math.PI / 2.2;
-            globe.rotation.x = 0.2;
+            // 初始视角定位至东亚/中国区域
+            globe.rotation.y = -Math.PI / 1.7;
+            globe.rotation.x = 0.35;
 
             // 拖拽旋转逻辑
             let isDragging = false, previousMousePosition = { x: 0, y: 0 };
@@ -282,16 +285,16 @@
             return new THREE.Vector3(x, y, z);
         }
 
-        // 每帧计算卡片与 SVG 曲线位置，保持无缝贴合
+        // 实时跟踪卡片与标点的位置，保持连线完整绑定
         function animate() {
             requestAnimationFrame(animate);
-            globe.rotation.y += 0.0008; // 自转
+            globe.rotation.y += 0.0006; // 缓慢自转
 
             if (markerMesh && camera) {
                 const wp = new THREE.Vector3();
                 markerMesh.getWorldPosition(wp);
                 
-                // 判断标点是否在屏幕正面
+                // 判断标点是否朝向视野正面
                 const cameraDir = new THREE.Vector3();
                 camera.getWorldDirection(cameraDir);
                 const dot = wp.clone().normalize().dot(cameraDir.negate());
@@ -303,10 +306,9 @@
                 const card = document.getElementById('fujian-card');
                 const line = document.getElementById('leader-line');
 
-                if (dot > 0.2) { // 标点转到正面时显示卡片和虚线
-                    // 卡片固定在标点右上角偏移处
-                    const offsetX = 70;
-                    const offsetY = -90;
+                if (dot > 0.25) { // 正面时显示卡片和连线
+                    const offsetX = 80;
+                    const offsetY = -80;
                     const cardX = startX + offsetX;
                     const cardY = startY + offsetY;
 
@@ -314,10 +316,10 @@
                     card.style.top = `${cardY}px`;
                     card.style.opacity = '1';
 
-                    // 动态更新 2D SVG 贝塞尔曲线弧线
+                    // 绘制平滑贝塞尔曲线，完美连接标点与信息框
                     const endX = cardX;
-                    const endY = cardY + 35; // 连到卡片左边缘中点
-                    const controlX = startX + 50;
+                    const endY = cardY + 35;
+                    const controlX = startX + 40;
                     const controlY = startY - 20;
 
                     line.setAttribute('d', `M ${startX} ${startY} Q ${controlX} ${controlY}, ${endX} ${endY}`);
