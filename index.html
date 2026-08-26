@@ -205,10 +205,11 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             container.appendChild(renderer.domElement);
 
-            // 暖光照亮羊皮纸细节
-            const ambientLight = new THREE.AmbientLight(0xffebd2, 1.4);
+            // 【关键修改】：换用中性白光，还原地图最真实的原始色彩
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
             scene.add(ambientLight);
-            const dirLight = new THREE.DirectionalLight(0xffb86c, 0.7);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
             dirLight.position.set(5, 3, 5);
             scene.add(dirLight);
 
@@ -216,7 +217,7 @@
             const radius = 70;
             const geometry = new THREE.SphereGeometry(radius, 64, 64);
             
-            // 直接读取仓库根目录下的 earth-vintage.jpg
+            // 【关键修改】：精准指向 PNG 格式图片
             const textureLoader = new THREE.TextureLoader();
             const vintageTexture = textureLoader.load('./earth-vintage.png', () => {
                 renderer.render(scene, camera);
@@ -224,8 +225,8 @@
 
             const material = new THREE.MeshStandardMaterial({
                 map: vintageTexture,
-                roughness: 0.8,
-                metalness: 0.1
+                roughness: 0.9,
+                metalness: 0.0
             });
             globe = new THREE.Mesh(geometry, material);
             scene.add(globe);
